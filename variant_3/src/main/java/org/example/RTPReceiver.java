@@ -115,10 +115,10 @@ public class RTPReceiver {
                     socket.receive(packet);
                     // Очищаем буфер пакета для следующего приема
                     packet.setLength(buffer.length);
-                } catch (SocketTimeoutException e) {
-                    // Обработка исключения при истечении таймаута
-                    System.out.println("Таймаут истек");
-                }
+                    } catch (SocketTimeoutException e) {
+                        // Обработка исключения при истечении таймаута
+                        System.out.println("Таймаут истек");
+                    }
             }
         }
         catch (Exception e) {

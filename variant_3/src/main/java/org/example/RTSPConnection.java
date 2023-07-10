@@ -2,6 +2,10 @@ package org.example;
 
 import java.io.*;
 import java.net.Socket;
+import java.nio.CharBuffer;
+import java.util.ArrayList;
+
+import static java.lang.Thread.sleep;
 
 public class RTSPConnection {
     private static String URL = "127.0.0.1";
@@ -60,12 +64,47 @@ public class RTSPConnection {
             OutputStream outputStream = rtspSocket.getOutputStream();
             InputStream inputStream = rtspSocket.getInputStream();
 
-            String request = "SETUP " + RTSP_URL + "/trackID=0 RTSP/1.0\r\nCSeq: 1\r\nTransport: RTP/AVP;unicast;client_port=" + RTP_CLIENT_PORT + "-" + (RTP_CLIENT_PORT + 1) + "\r\n\r\n";
+            String request = "DESCRIBE " + RTSP_URL + " RTSP/1.0\r\nCSeq: 1\r\nAccept: application/sdp\r\n\r\n";
+            outputStream.write(request.getBytes());
+            outputStream.flush();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+
+            String response;
+            ArrayList<String> uri_list = new ArrayList<>();
+            String uri;
+            int contentLength = 0;
+            while (reader.readLine()!=null) {
+                // Обработка ответа от RTSP сервера
+                response = reader.readLine();
+                if (response.startsWith("Content-Length: ")){
+                    contentLength = Integer.parseInt(response.replace("Content-Length: ",""));
+                }
+                if(response.startsWith("Cseq")){
+                    break;
+                }
+            }
+
+            char[] buffer = new char[contentLength];
+            reader.read(buffer, 0, contentLength);
+            String responseBody = new String(buffer);
+            String[] parts = responseBody.split("\n");
+            for (String part : parts){
+                if (part.startsWith("a=control:")) {
+                    uri = part.replace("a=control:","");
+                    uri_list.add(uri.replace("\r", ""));
+                }
+
+            }
+
+
+
+
+            request = "SETUP " + uri_list.get(1) + " RTSP/1.0\r\nCSeq: 2\r\nTransport: RTP/AVP;unicast;client_port=" + RTP_CLIENT_PORT + "-" + (RTP_CLIENT_PORT + 1) + "\r\n\r\n";
             outputStream.write(request.getBytes());
 
             // Читаем ответ от RTSP сервера
-            BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
-            String response;
+            reader = new BufferedReader(new InputStreamReader(inputStream));
+
             while ((response = reader.readLine()) != null) {
                 // Обработка ответа от RTSP сервера
                 System.out.println(response);
@@ -92,15 +131,7 @@ public class RTSPConnection {
                 }
             }
 
-//            request = "DESCRIBE " + RTSP_URL + " RTSP/1.0\r\nCSeq: 2\r\nAccept: application/sdp\r\n\r\n";
-//            outputStream.write(request.getBytes());
-//            reader = new BufferedReader(new InputStreamReader(inputStream));
-//
-//            while ((response = reader.readLine()) != null) {
-//                // Обработка ответа от RTSP сервера
-//                System.out.println(response);
-//
-//            }
+
 
             request = "PLAY " + RTSP_URL + "/trackID=0 RTSP/1.0\r\nCSeq: 3\r\nSession: 1\r\nRange: npt=0.000-\r\n\r\n";
             outputStream.write(request.getBytes());
