@@ -5,7 +5,9 @@ public class Decode {
         System.out.println("Привет");
     }
 
-
+    public void decode_JPEG(){
+        System.out.println("Привет1");
+    }
     public String getPath() {
         return(getClass().getName());
     }

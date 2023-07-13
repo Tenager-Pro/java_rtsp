@@ -20,6 +20,7 @@ public class RTSPConnection {
     private static RTPReceiver rtpReceiver;
     private static int RTP_CLIENT_PORT = 5004;
     private static int RTP_SERVER_PORT = 0;
+    private static ArrayList<String> CODEC_LIST = new ArrayList<>(); //Содержит информацию о кодировании потоков
 
     public RTSPConnection(){
     }
@@ -73,113 +74,128 @@ public class RTSPConnection {
     public int getRTP_SERVER_PORT() {
         return RTP_SERVER_PORT;
     }
+
+    public ArrayList<String> describe_request() throws IOException {
+        // Request Describe
+        String request = "DESCRIBE " + RTSP_URL + " RTSP/1.0\r\nCSeq: 1\r\nAccept: application/sdp\r\n\r\n";
+        outputStream.write(request.getBytes());
+        outputStream.flush();
+
+        // Читаем ответ от RTSP сервера
+        BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+        int cnt = 0;
+        String response;
+        ArrayList<String> uri_list = new ArrayList<>();
+        String uri;
+        String codec;
+        int contentLength = 0;
+
+        response = reader.readLine();
+        while (response != null && cnt < 50) {
+            // Обработка ответа от RTSP сервера
+            cnt++;// Счетчик полученных пакетов
+            System.out.println(response);
+            // Нахождение длины тела запроса
+            if (response.startsWith("Content-Length: ")){
+                contentLength = Integer.parseInt(response.replace("Content-Length: ",""));
+            }
+
+            // Конец считывания заголовка запроса
+            if (response.isEmpty()){
+                break;
+            }
+
+            response = reader.readLine();
+        }
+
+        //Парсер тела запроса
+        char[] buffer = new char[contentLength];
+        reader.read(buffer, 0, contentLength);
+        String responseBody = new String(buffer);
+        String[] parts = responseBody.split("\n");
+        for (String part : parts){
+            System.out.println(part);
+            if (part.startsWith("a=control:")) {
+                uri = part.replace("a=control:","");
+                uri_list.add(uri.replace("\r", ""));
+            }
+            if (part.startsWith("a=rtpmap:")){
+                codec = part.replace("a=rtpmap:","");
+                CODEC_LIST.add(codec.replace("\r", ""));
+            }
+        }
+        return uri_list;
+    }
+
+    public String setup_request(ArrayList<String> uri_list) throws IOException {
+        // Request Setup
+        String request = "SETUP " + uri_list.get(1) + " RTSP/1.0\r\nCSeq: 2\r\nTransport: RTP/AVP;unicast;client_port=" + RTP_CLIENT_PORT + "-" + (RTP_CLIENT_PORT + 1) + "\r\n\r\n";
+        outputStream.write(request.getBytes());
+        outputStream.flush();
+
+        // Читаем ответ от RTSP сервера
+        BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+        String session = "1";
+        boolean is_session = false;
+        boolean is_transport = false;
+        String response;
+        while ((response = reader.readLine()) != null) {
+            System.out.println(response);
+            // Обработка ответа от RTSP сервера
+            // Извлекаем информаци
+            if(response.startsWith("Session")){
+                String[] sessions = response.split(":");
+                session = sessions[1].replace(";timeout=60","");
+                is_session = true;
+            }
+            if (response.startsWith("Transport")) {
+                String[] transportParts = response.split(";");
+                for (String part : transportParts) {
+                    if (part.trim().startsWith("destination")) {
+                        String[] addressParts = part.trim().split("=");
+                        RTP_ADDRESS = addressParts[1].trim();
+                    }
+                    else if (part.trim().startsWith("client_port")) {
+                        String[] portParts = part.trim().split("=");
+                        String[] portRange = portParts[1].trim().split("-");
+                        RTP_CLIENT_PORT = Integer.parseInt(portRange[0].trim());
+                    }
+                    else if (part.trim().startsWith("server_port")) {
+                        String[] portParts = part.trim().split("=");
+                        String[] portRange = portParts[1].trim().split("-");
+                        RTP_SERVER_PORT = Integer.parseInt(portRange[0].trim());
+                    }
+                }
+                is_transport = true;
+            }
+            if (is_transport && is_session){
+                break;
+            }
+        }
+        return session;
+    }
+
+    public void play_request(String session) throws IOException {
+        // Request Play
+        String request = "PLAY " + RTSP_URL + " RTSP/1.0\r\nCSeq: 3\r\nSession: " + session + "\r\nRange: npt=0.000-\r\n\r\n";
+
+        outputStream.write(request.getBytes());
+        outputStream.flush();
+    }
+
     public void connect(){
         try {
             rtspSocket = new Socket(URL, RTSP_PORT);
             outputStream = rtspSocket.getOutputStream();
             inputStream = rtspSocket.getInputStream();
 
-            String request = "DESCRIBE " + RTSP_URL + " RTSP/1.0\r\nCSeq: 1\r\nAccept: application/sdp\r\n\r\n";
-            outputStream.write(request.getBytes());
-            outputStream.flush();
+            ArrayList<String> uri_list = describe_request();
 
-            // Читаем ответ от RTSP сервера
-            BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
-            int cnt = 0;
-            String response;
-            ArrayList<String> uri_list = new ArrayList<>();
-            ArrayList<String> codec_list = new ArrayList<>();
-            String uri;
-            String codec;
-            int contentLength = 0;
+            String session = setup_request(uri_list);
 
-            response = reader.readLine();
-            while (response != null && cnt < 50) {
-                // Обработка ответа от RTSP сервера
-                cnt++;// Счетчик полученных пакетов
-                System.out.println(response);
-                // Нахождение длины тела запроса
-                if (response.startsWith("Content-Length: ")){
-                    contentLength = Integer.parseInt(response.replace("Content-Length: ",""));
-                }
+            play_request(session);
 
-                // Конец считывания заголовка запроса
-                if (response.isEmpty()){
-                    break;
-                }
-
-                response = reader.readLine();
-            }
-
-            //Парсер тела запроса
-            char[] buffer = new char[contentLength];
-            reader.read(buffer, 0, contentLength);
-            String responseBody = new String(buffer);
-            String[] parts = responseBody.split("\n");
-            for (String part : parts){
-                System.out.println(part);
-                if (part.startsWith("a=control:")) {
-                    uri = part.replace("a=control:","");
-                    uri_list.add(uri.replace("\r", ""));
-                }
-                if (part.startsWith("a=rtpmap:")){
-                    codec = part.replace("a=rtpmap:","");
-                    codec_list.add(codec.replace("\r", ""));
-                }
-            }
-
-
-            request = "SETUP " + uri_list.get(1) + " RTSP/1.0\r\nCSeq: 2\r\nTransport: RTP/AVP;unicast;client_port=" + RTP_CLIENT_PORT + "-" + (RTP_CLIENT_PORT + 1) + "\r\n\r\n";
-            outputStream.write(request.getBytes());
-            outputStream.flush();
-
-            // Читаем ответ от RTSP сервера
-            reader = new BufferedReader(new InputStreamReader(inputStream));
-            String session = "1";
-            boolean is_session = false;
-            boolean is_transport = false;
-            while ((response = reader.readLine()) != null) {
-                System.out.println(response);
-                // Обработка ответа от RTSP сервера
-                // Извлекаем информаци
-                if(response.startsWith("Session")){
-                    String[] sessions = response.split(":");
-                    session = sessions[1].replace(";timeout=60","");
-                    is_session = true;
-                }
-                if (response.startsWith("Transport")) {
-                    String[] transportParts = response.split(";");
-                    for (String part : transportParts) {
-                        if (part.trim().startsWith("destination")) {
-                            String[] addressParts = part.trim().split("=");
-                            RTP_ADDRESS = addressParts[1].trim();
-                        }
-                        else if (part.trim().startsWith("client_port")) {
-                            String[] portParts = part.trim().split("=");
-                            String[] portRange = portParts[1].trim().split("-");
-                            RTP_CLIENT_PORT = Integer.parseInt(portRange[0].trim());
-                        }
-                        else if (part.trim().startsWith("server_port")) {
-                            String[] portParts = part.trim().split("=");
-                            String[] portRange = portParts[1].trim().split("-");
-                            RTP_SERVER_PORT = Integer.parseInt(portRange[0].trim());
-                        }
-                    }
-                    is_transport = true;
-                }
-                if (is_transport && is_session){
-                    break;
-                }
-            }
-
-            request = "PLAY " + RTSP_URL + " RTSP/1.0\r\nCSeq: 3\r\nSession: " + session + "\r\nRange: npt=0.000-\r\n\r\n";
-
-            outputStream.write(request.getBytes());
-            outputStream.flush();
-
-
-
-            rtpReceiver = new RTPReceiver(RTP_CLIENT_PORT, codec_list, PATH_DECODE_FILE);
+            rtpReceiver = new RTPReceiver(RTP_CLIENT_PORT, CODEC_LIST, PATH_DECODE_FILE);
             rtpReceiver.reception();
         }
         catch (IOException e) {

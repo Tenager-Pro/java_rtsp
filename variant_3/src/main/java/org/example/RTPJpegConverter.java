@@ -121,9 +121,6 @@ public class RTPJpegConverter {
             e.printStackTrace();
         }
 
-
-
-
         // Создание байт кода изображения
         ByteArrayInputStream inputStream = new ByteArrayInputStream(payload);
         BufferedImage image = ImageIO.read(inputStream);
