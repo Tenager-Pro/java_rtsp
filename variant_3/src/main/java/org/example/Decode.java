@@ -5,8 +5,12 @@ public class Decode {
         System.out.println("Привет");
     }
 
-    public void decode_JPEG(){
-        System.out.println("Привет1");
+    public void decode_JPEG(byte[] payload){
+        JPEGHeader jpegHeader = new JPEGHeader();
+        jpegHeader.parse(payload);
+
+        System.out.println(jpegHeader.getHeight());
+        System.out.println(jpegHeader.getWidth());
     }
     public String getPath() {
         return(getClass().getName());

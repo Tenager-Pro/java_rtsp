@@ -90,15 +90,12 @@ public class RTPJpegConverter {
 
         byte[] rtpData = new byte[packet.getLength()]; // Создаем массив для данных из ответа rtp
         System.arraycopy(packet.getData(), packet.getOffset(), rtpData, 0, packet.getLength()); // Данные из ответа rtp
-        int payloadType = (rtpData[1] & 0x7F); // Извлекаем тип данных кодека из заголовка RTP
-
+        RTPDatagram rtpDatagram = new RTPDatagram();
+        rtpDatagram.parse(rtpData);
+        headerSize = rtpDatagram.getHeaderSize();
         String codec = getPayloadCodecVideo();
         codec = codec.replace("-", "_");
         codec = codec.replace(".", "_");
-        // Находим длинну header
-        int cc = (rtpData[0] & 0x0F); // Значение поля CC указывает на количество доп. источников после заголовка rtp
-        // Размер RTP заголовка в байтах.
-        int headerSize = 12 + (cc * 4); // Высчитываеться по формуле Стандартный заголовок = 12 байт + 4 байта за каждый доп. источник
 
         // Тело ответа
         byte[] payload = new byte[packet.getLength() - headerSize];
@@ -114,7 +111,7 @@ public class RTPJpegConverter {
             Object object = decodeClass.getDeclaredConstructor().newInstance(); // Создание экземпляра класса
 
             Method method = decodeClass.getMethod(methodName); // Получение метода по имени
-            method.invoke(object); // Вызов метода
+            method.invoke(object, payload); // Вызов метода
         } catch (ClassNotFoundException | NoSuchMethodException | InstantiationException | IllegalAccessException e) {
             e.printStackTrace();
         } catch (java.lang.reflect.InvocationTargetException e) {
